@@ -152,8 +152,7 @@ plot(composite)
 
 
 ```{r}
-knitr::opts_chunk$set(
-  eval = FALSE)
+rm(dapi_channel, image_stack, nucleus,segmentation, tissue, composite, dapi)
 ```
 
 ## VectraPolarisData
@@ -181,82 +180,167 @@ BiocManager::install("VectraPolarisData")
 
 
 
-## Ovarian cancer data 
+### Ovarian cancer data 
 
 Load the high grade serous ovarian cancer data. This dataset has been segmented and phenotyped, and has one image per patient.
+I will be working with a form of this data that has already been preprocessed into a tidy dataframe.
 
-```{r, message = FALSE, eval = FALSE}
-library(VectraPolarisData)
-
-# load spatial experiment object
-oc <- HumanOvarianCancerVP()
+```{r}
+# load processed ovarian cancer data
+load(url("https://github.com/julia-wrobel/MI_tutorial/raw/main/Data/ovarian.RDA"))
 ```
-
-Inspect the `SpatialExperiment` object.
-
-
-Many of the variables are summary statistics of marker intensity values. More information on the different variables in this and the lung cancer dataset can be found in the [package vignette](https://bioconductor.org/packages/release/data/experiment/vignettes/VectraPolarisData/inst/doc/VectraPolarisData.html).
-
 
 The resulting dataframe, `ovarian_df`, contains information on marker intensities, cell X and Y position, cell phenotypes, and patient-level characteristics.
 
-### Exploratory analysis
 
-
-```{r, eval = FALSE}
-dim(ovarian_df)
-
-head(ovarian_df)
-
-glimpse(ovarian_df)
+```{r}
+ovarian_df %>%
+  select(contains("id"),tissue_category, cd8, phenotype_cd68, x, y, everything()) %>%
+  as_tibble() %>%
+  head()
 ```
 
 
 Below we plot the cells for a single subject. In this dataset there is one image for each subject, and the image comes from a tumor microarray (TMA).
 
 ```{r}
+
+set.seed(7332)
 id = sample(ovarian_df$sample_id, 1)
 
 ovarian_df %>%
   filter(sample_id == id) %>%
   ggplot(aes(x, y)) +
-  geom_point(aes(color = tissue_category), size = 0.1)
+  geom_point(aes(color = tissue_category), size = 0.2)
 
 
 ```
 
-Now we plot the images (below) for multiple subjects. In this dataset, multiple TMA cores (each TMA core is frome a different subject) were placed on the same slide, and then that slide was imaged. X and Y locations in this data correspond to position on the slide for a given patient sample. 
 
 ```{r}
 ovarian_df %>%
-  filter(sample_id < 10) %>%
+  filter(sample_id == id) %>%
+  mutate(phenotype_cd68 = ifelse(phenotype_cd68 == "CD68+", "CD68+", "CD68-")) %>%
   ggplot(aes(x, y)) +
-  geom_point(aes(color = tissue_category), size = 0.1)
+  geom_point(aes(color = phenotype_cd68), alpha = 0.8, size = 0.7)
+
 ```
 
 
-## Lung data
-
-Load the non small cell lung carcinoma data and inspect the `SpatialExperiment` object. This dataset has 3-4 images per patient, representing different ROIs from a tissue slice. In this dataset, each patient was imaged on a separate slide.
 
 
-### Exploratory analysis
+### Lung data
 
-Below shows images from a single subject. Each image represents a different ROI from the same tissue slice from a single subject. There are 3-6 ROIs for each subject. 
+Load the non small cell lung carcinoma data and inspect the `SpatialExperiment` object. This dataset has 3-4 images per patient, representing different regions of interest (ROIs) from a tissue slice. In this dataset, each patient was imaged on a separate slide.
 
 ```{r}
+# load processed ovarian cancer data
+load(url("https://github.com/julia-wrobel/MI_tutorial/raw/main/Data/lung.RDA"))
+```
+
+
+```{r}
+set.seed(23423)
 id = sample(lung_df$patient_id, 1)
 
 lung_df %>%
   filter(patient_id == id) %>%
   ggplot(aes(x, y)) +
-  geom_point(aes(color = tissue_category), size = 0.1) +
+  geom_point(aes(color = tissue_category), size = 0.3) +
   facet_wrap(~image_id)
 
 ```
 
+```{r, echo = FALSE}
+rm(lung_df)
+```
 
 
+
+
+## Spatial Analysis using spatstat package
+
+
+
+The `spatstat` package in `R` has great resources for analyzing spatial point patterns. Let's use the image above to do some exploratory analysis with spatstat.
+
+We will do spatial analysis on the distribution of B-cells and macrophages, so we subset to only these cell types, and create a `phenotype` variable that designates whether a cell is a B cell or a macrophage. Then we create a `ppp` object, which is what the `spatstat` package uses for storage and analysis of point pattern data.
+
+
+```{r}
+subj_df = filter(ovarian_df, sample_id == 7) 
+
+library(spatstat)
+
+subj_df = subj_df %>%
+  # create a phenotype variable that is B-cell, macrophage, or other
+  mutate(phenotype = case_when(
+    phenotype_cd68 == "CD68+" ~ "macrophage",
+    phenotype_cd19 == "CD19+" ~ "B-cell",
+    TRUE ~ "other"
+  )) %>%
+  filter(phenotype != "other") %>%
+  select(x,y, immune, tissue_category, phenotype)
+
+# first define window of observation for your image
+w = convexhull.xy(subj_df$x,subj_df$y)
+
+# create ppp object as multitype point pattern
+# need to factor the marks variable for ppp object to be treated as a multitype point pattern
+ovarian_pp = ppp(subj_df$x,subj_df$y, window = w,
+                 marks = factor(subj_df$phenotype))
+```
+
+
+### Univariate Ripley's  K
+
+
+First we calculate Ripley's K for B cells.  
+
+
+```{r}
+k_bcell =  Kest(subset(ovarian_pp, marks == "B-cell"), correction = "isotropic")
+```
+
+We can plot this `k_bcell` object using `spatstat` to visualize the estimated K ($\hat{K}^{iso}$) compared to the K under CSR ($K^{pois}$).
+
+```{r}
+plot(k_bcell)
+```
+
+Now visualize the K-function for macrophages in this image:
+
+```{r}
+k_mac =  Kest(subset(ovarian_pp, marks == "macrophage"), 
+              correction = "isotropic")
+plot(k_mac)
+```
+
+It appears that there is some degree of clustering for both B-cells and macrophages in this image. Are these statistically significant?
+
+We can test this using the `envelope` function, which performs Monte Carlo simulations of the K function under CSR. Plot below shows pointwise envelope for B-cell K-function. Pointwise means that these are performed separately for each value of *r*. Can only be interpreted if a specific value of *r* is chosen in advance.
+
+```{r}
+
+e_test = envelope(subset(ovarian_pp, marks == "B-cell"), 
+               Kest, correction = "isotropic", global = TRUE)
+
+plot(e_test)
+
+```
+
+Points outside the envelope indicate significant departure from CSR. Note that this could be due to inhomogeneity in the distribution of cells, or due to clustering. See `spatstat::Kinhom` function for a test that takes into account inhomogeneity. See `spatstat::Lest` function to compute the L-function.
+
+
+### Bivariate Ripley's  K
+
+The bivariate K function measures whether the spatial distribution of 2 cell types is independent. Deviation from the $K^{pois}$ line suggests a spatial relationship between the B-cells and macrophages in the image.
+
+```{r}
+k_biv = Kcross(ovarian_pp, "B-cell", "macrophage", correction = "isotropic")
+
+plot(k_biv)
+```
 
 
 ## Additional Reading
@@ -265,6 +349,7 @@ Below are original citations for the two example datasets I will be working with
 
 * [Paper for ovarian cancer data](https://aacrjournals.org/mcr/article/19/12/1973/675069/The-Spatial-Context-of-Tumor-Infiltrating-Immune)
 * [Paper for non-small cell lung carcinoma data](https://pubmed.ncbi.nlm.nih.gov/34048945/)
+* [spatstat JSS article](https://www.jstatsoft.org/article/view/v012i06)
 * [Vignette for VectraPolarisData](https://bioconductor.org/packages/release/data/experiment/vignettes/VectraPolarisData/inst/doc/VectraPolarisData.html)
 * [textbook chapter, Wrobel and Vandekar](http://juliawrobel.com/Downloads/mIF_chapter.pdf)
 * [Challenges and Opportunities in the Statistical Analysis of Multiplex Immunofluorescence Data](https://www.mdpi.com/2072-6694/13/12/3031)
