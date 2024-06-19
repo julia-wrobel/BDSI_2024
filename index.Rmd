@@ -154,7 +154,7 @@ plot(composite)
 
 
 ```{r}
-rm(dapi_channel, image_stack, nucleus,segmentation, tissue, composite, dapi)
+rm(dapi_channel, image_stack, nucleus,segmentation, tissue, composite, dapi, segmentations, composite_tif, read_maps, read_composites)
 ```
 
 ## VectraPolarisData
@@ -195,11 +195,10 @@ load(url("https://github.com/julia-wrobel/MI_tutorial/raw/main/Data/ovarian.RDA"
 The resulting dataframe, `ovarian_df`, contains information on marker intensities, cell X and Y position, cell phenotypes, and patient-level characteristics.
 
 
-```{r}
+```{r, collapse=FALSE}
 ovarian_df %>%
   select(contains("id"),tissue_category, cd8, phenotype_cd68, x, y, everything()) %>%
-  as_tibble() %>%
-  head()
+  as_tibble() 
 ```
 
 
