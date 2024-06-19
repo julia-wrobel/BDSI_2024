@@ -101,16 +101,19 @@ I can use the `display()` function from the `EBImage` package to plot an individ
 ```{r}
 dapi_channel = t(image_stack$"DAPI (DAPI)")
 EBImage::display(dapi_channel, method = "raster")
-
-
-# plot the image in a specified color
-dapi = rgbImage(blue=.1*dapi_channel, red = .02 * dapi_channel)
-display(dapi, method = "raster")
 ```
+
+Now we plot the CD3 channel (a protein marker for T-cells).
+
+```{r}
+tcell_channel = t(image_stack$"CD3 (Opal 520)")
+EBImage::display(tcell_channel, method = "raster")
+```
+
 
 ### Segmentation files
 
-This data was collected on a Vectra 3 instrument and segmented using [inForm](https://www.akoyabio.com/phenoimager/software/inform-tissue-finder/) tissue analysis     software from Akoya Biosciences. This is proprietary image analysis software that can perform cell and tissue segmentation and cell phenotyping. The segmentation below were performed by that software.
+This data was collected on a Vectra 3 instrument and segmented using [inForm](https://www.akoyabio.com/phenoimager/software/inform-tissue-finder/) tissue analysis software from Akoya Biosciences. This is proprietary image analysis software that can perform cell and tissue segmentation and cell phenotyping. The segmentation below were performed by that software.
 
 ```{r}
 # source phenoptr code for loading file and metadata, based on tiff::readTIFF.
@@ -128,12 +131,11 @@ plot(as.raster(nucleus, max = max(nucleus)))
 ```
 
 
-Tissue segmentation
+Nucleus segmentation
 
 ```{r}
-tissue = segmentations[['Tissue']]
-
-plot(as.raster(tissue, max = max(tissue)))
+nucleus = segmentations[['Nucleus']]
+plot(as.raster(nucleus, max = max(nucleus)))
 ```
 
 ### Composite file
